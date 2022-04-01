@@ -1,0 +1,8 @@
+.vagrant/
+packer_cache/
+output-*/
+shared/
+tmp/
+*.box
+*.log
+secrets*

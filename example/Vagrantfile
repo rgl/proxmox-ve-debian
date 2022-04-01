@@ -1,0 +1,52 @@
+ENV['VAGRANT_EXPERIMENTAL'] = 'typed_triggers'
+
+Vagrant.configure('2') do |config|
+  config.vm.box = 'proxmox-ve-debian-amd64'
+  config.vm.provider :libvirt do |lv, config|
+    lv.memory = 2*1024
+    lv.cpus = 4
+    lv.cpu_mode = 'host-passthrough'
+    lv.nested = true
+    lv.keymap = 'pt'
+    # NB vagrant-libvirt does not yet support urandom, so we modify this
+    #    to urandom in the trigger bellow.
+    lv.random :model => 'random'
+    lv.disk_bus = 'scsi'
+    lv.disk_device = 'sda'
+    lv.disk_driver :discard => 'unmap', :cache => 'unsafe'
+    lv.storage :file, :size => '30G', :bus => 'scsi', :discard => 'unmap', :cache => 'unsafe'
+    config.vm.synced_folder '.', '/vagrant', type: 'nfs', nfs_version: '4.2', nfs_udp: false
+    config.trigger.before :'VagrantPlugins::ProviderLibvirt::Action::StartDomain', type: :action do |trigger|
+      trigger.ruby do |env, machine|
+        # modify the scsi controller model to virtio-scsi.
+        # see https://github.com/vagrant-libvirt/vagrant-libvirt/pull/692
+        # see https://github.com/vagrant-libvirt/vagrant-libvirt/issues/999
+        stdout, stderr, status = Open3.capture3(
+          'virt-xml', machine.id,
+          '--edit', 'type=scsi',
+          '--controller', 'model=virtio-scsi')
+        if status.exitstatus != 0
+          raise "failed to run virt-xml to modify the scsi controller model. status=#{status.exitstatus} stdout=#{stdout} stderr=#{stderr}"
+        end
+        # modify the random model to use the urandom backend device.
+        stdout, stderr, status = Open3.capture3(
+          'virt-xml', machine.id,
+          '--edit',
+          '--rng', '/dev/urandom')
+        if status.exitstatus != 0
+          raise "failed to run virt-xml to modify the random backend device. status=#{status.exitstatus} stdout=#{stdout} stderr=#{stderr}"
+        end
+      end
+    end
+  end
+  ip = '10.10.10.2'
+  config.vm.network :private_network,
+    ip: ip,
+    auto_config: false,
+    libvirt__dhcp_enabled: false,
+    libvirt__forward_mode: 'none'
+  config.vm.provision :shell, path: 'provision.sh', args: ip
+  config.vm.provision :shell, path: 'provision-pveproxy-certificate.sh', args: ip
+  config.vm.provision :shell, path: 'provision-containers.sh', args: ip
+  config.vm.provision :shell, path: 'summary.sh', args: ip
+end
