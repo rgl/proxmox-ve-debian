@@ -24,7 +24,7 @@ source "qemu" "proxmox-ve-debian-amd64" {
   ssh_username = "vagrant"
   ssh_password = "vagrant"
   ssh_timeout = "15m"
-  shutdown_command = "echo vagrant | sudo -S poweroff"
+  shutdown_command = "sudo poweroff"
 }
 
 build {
@@ -34,7 +34,7 @@ build {
 
   provisioner "shell" {
     expect_disconnect = true
-    execute_command = "echo vagrant | sudo -S bash {{.Path}}"
+    execute_command = "sudo {{ .Vars }} bash {{.Path}}"
     scripts = [
       "provision-pve.sh",
       "provision-reboot.sh",
